@@ -40,6 +40,9 @@ export default function HomePage() {
   type TerminalMode = "terminal" | "editor" | "matrix";
   const [terminalMode, setTerminalMode] = useState<TerminalMode>("terminal")
   const [soundEnabled, setSoundEnabled] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const [showVirtualKeyboard, setShowVirtualKeyboard] = useState(false)
+  const terminalInputRef = useRef<HTMLInputElement>(null)
   const [particles, setParticles] = useState<Array<{ id: number; x: number; y: number; vx: number; vy: number }>>([])
   const [mounted, setMounted] = useState(false)
   const [showEasterEgg, setShowEasterEgg] = useState(false)
@@ -122,6 +125,64 @@ export default function HomePage() {
     exit: "👋 Thanks for visiting! Refresh to start over anytime.",
   };
   
+
+  // Detect mobile device
+  useEffect(() => {
+    const checkIfMobile = () => {
+      setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent))
+    }
+    checkIfMobile()
+    window.addEventListener('resize', checkIfMobile)
+    return () => window.removeEventListener('resize', checkIfMobile)
+  }, [])
+
+  // Focus terminal input when in mobile view and terminal is active
+  useEffect(() => {
+    if (isMobile && terminalInputRef.current && terminalMode === 'terminal') {
+      terminalInputRef.current.focus()
+    }
+  }, [isMobile, terminalMode])
+
+  // Handle virtual keyboard input
+  const handleVirtualKeyPress = (key: string) => {
+    if (key === 'enter') {
+      processCommand()
+    } else if (key === 'backspace') {
+      setTypedText(prev => prev.slice(0, -1))
+    } else if (key === 'space') {
+      setTypedText(prev => prev + ' ')
+    } else {
+      setTypedText(prev => prev + key)
+    }
+  }
+
+  const processCommand = () => {
+    if (typedText.trim() === "clear") {
+      setDisplayText("")
+      setTypedText("")
+      return
+    }
+
+    if (typedText.trim() === "matrix") {
+      setTerminalMode("matrix")
+      setTimeout(() => setTerminalMode("terminal"), 3000)
+    }
+
+    // Add to command history
+    if (typedText.trim()) {
+      setCommandHistory((prev) => [...prev, typedText.trim()])
+      setHistoryIndex(-1)
+    }
+
+    // Check if typed text matches any response
+    const response = responses[typedText.toLowerCase().trim()]
+    if (response) {
+      setDisplayText(response)
+    } else if (typedText.trim()) {
+      setDisplayText("❌ Command not recognized. Type 'help' for available commands.")
+    }
+    setTypedText("")
+  }
 
   // Enhanced keyboard handling with history and special keys
   useEffect(() => {
@@ -233,8 +294,20 @@ export default function HomePage() {
 
     window.addEventListener("keydown", handleKeyDown)
 
+    // Add touch event listeners for mobile
+    const handleTouchStart = (e: TouchEvent) => {
+      if (isMobile && terminalMode === 'terminal') {
+        setShowVirtualKeyboard(true)
+        e.preventDefault()
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    window.addEventListener('touchstart', handleTouchStart, { passive: false })
+
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
+      window.removeEventListener('touchstart', handleTouchStart)
     }
   }, [typedText, commandHistory, historyIndex, soundEnabled])
 
@@ -516,10 +589,10 @@ export default function HomePage() {
       </nav>
 
       {/* Hero Section */}
-      <section ref={heroRef} className="relative min-h-screen flex items-center">
-        <div className="container mx-auto px-6 md:px-12 grid lg:grid-cols-2 gap-12 items-center">
+      <section ref={heroRef} className="relative min-h-screen flex items-center pt-24 md:pt-0">
+        <div className="container mx-auto px-6 md:px-12 grid lg:grid-cols-2 gap-12 items-start md:items-center">
           {/* Left Content */}
-          <div className="space-y-8 lg:pr-12">
+          <div className="space-y-8 lg:pr-12 pt-8 md:pt-0">
             <div className="space-y-6">
               <div className="flex items-center space-x-2 text-purple-400 mb-4">
                 <Sparkles className="w-5 h-5 animate-pulse" />
@@ -600,8 +673,20 @@ export default function HomePage() {
                             <span>~/portfolio $</span>
                             {soundEnabled && <Volume2 className="w-3 h-3 animate-pulse" />}
                           </div>
-                          <div className="mb-2 text-white">
-                            {typedText && `> ${typedText}`}
+                          <div className="mb-2 text-white flex items-center">
+                            <span className="text-purple-400 mr-1">$</span>
+                            <input
+                              ref={terminalInputRef}
+                              type="text"
+                              value={typedText}
+                              onChange={(e) => setTypedText(e.target.value)}
+                              onKeyPress={(e) => e.key === 'Enter' && processCommand()}
+                              className="bg-transparent border-none outline-none text-white flex-1"
+                              autoComplete="off"
+                              autoCorrect="off"
+                              autoCapitalize="off"
+                              spellCheck="false"
+                            />
                             {typedText && <span className="animate-pulse">|</span>}
                           </div>
                           <div className="flex-1 overflow-hidden">
@@ -618,9 +703,87 @@ export default function HomePage() {
                             <span>Try: help, skills, about me, matrix</span>
                             <div className="flex items-center space-x-1">
                               <Coffee className="w-3 h-3" />
-                              <span>Ready</span>
+                              <span>{isMobile ? 'Tap to type' : 'Ready'}</span>
                             </div>
+                            {isMobile && (
+                              <button 
+                                onClick={() => setShowVirtualKeyboard(!showVirtualKeyboard)}
+                                className="ml-2 text-xs bg-gray-700 px-2 py-1 rounded"
+                              >
+                                {showVirtualKeyboard ? 'Hide' : 'Show'} Keyboard
+                              </button>
+                            )}
                           </div>
+                          
+                          {/* Virtual Keyboard for Mobile */}
+                          {isMobile && showVirtualKeyboard && (
+                            <div className="mt-4 bg-gray-800 p-2 rounded-md">
+                              <div className="grid grid-cols-10 gap-1 mb-1">
+                                {['1','2','3','4','5','6','7','8','9','0'].map(char => (
+                                  <button
+                                    key={char}
+                                    onClick={() => handleVirtualKeyPress(char)}
+                                    className="bg-gray-700 hover:bg-gray-600 rounded p-2 text-xs"
+                                  >
+                                    {char}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="grid grid-cols-10 gap-1 mb-1">
+                                {['q','w','e','r','t','y','u','i','o','p'].map(char => (
+                                  <button
+                                    key={char}
+                                    onClick={() => handleVirtualKeyPress(char)}
+                                    className="bg-gray-700 hover:bg-gray-600 rounded p-2 text-xs"
+                                  >
+                                    {char}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="grid grid-cols-10 gap-1 mb-1">
+                                <div className="col-span-1"></div>
+                                {['a','s','d','f','g','h','j','k','l'].map(char => (
+                                  <button
+                                    key={char}
+                                    onClick={() => handleVirtualKeyPress(char)}
+                                    className="bg-gray-700 hover:bg-gray-600 rounded p-2 text-xs"
+                                  >
+                                    {char}
+                                  </button>
+                                ))}
+                                <div className="col-span-1"></div>
+                              </div>
+                              <div className="grid grid-cols-10 gap-1">
+                                <button
+                                  onClick={() => handleVirtualKeyPress('backspace')}
+                                  className="bg-red-600 hover:bg-red-500 rounded p-2 text-xs col-span-2"
+                                >
+                                  ⌫
+                                </button>
+                                {['z','x','c','v','b','n','m'].map(char => (
+                                  <button
+                                    key={char}
+                                    onClick={() => handleVirtualKeyPress(char)}
+                                    className="bg-gray-700 hover:bg-gray-600 rounded p-2 text-xs"
+                                  >
+                                    {char}
+                                  </button>
+                                ))}
+                                <button
+                                  onClick={() => handleVirtualKeyPress(' ')}
+                                  className="bg-gray-700 hover:bg-gray-600 rounded p-2 text-xs col-span-2"
+                                >
+                                  Space
+                                </button>
+                                <button
+                                  onClick={() => handleVirtualKeyPress('enter')}
+                                  className="bg-blue-600 hover:bg-blue-500 rounded p-2 text-xs"
+                                >
+                                  Enter
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </>
                       )}
 
